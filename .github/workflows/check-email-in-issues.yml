@@ -14,18 +14,27 @@ jobs:
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
+          FERPA_FOUND=false
+          PERSONAL_FOUND=false
+
           # Check for Berkeley emails (FERPA)
           if echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@berkeley\.edu"; then
-            echo "::warning::Berkeley email address detected in issue!"
-            echo "EMAIL_TYPE=FERPA" >> $GITHUB_ENV
+            echo "::warning::Berkeley email address detected!"
+            FERPA_FOUND=true
+          fi
           
           # Check for common personal emails
-          elif echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|icloud|me|live|aol|protonmail)\.com"; then
-            echo "::warning::Personal email address detected in issue!"
+          if echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|icloud|me|live|aol|protonmail)\.com"; then
+            echo "::warning::Personal email address detected!"
+            PERSONAL_FOUND=true
+          fi
+
+          # Prioritize FERPA violation if both are present
+          if [ "$FERPA_FOUND" = "true" ]; then
+            echo "EMAIL_TYPE=FERPA" >> $GITHUB_ENV
+          elif [ "$PERSONAL_FOUND" = "true" ]; then
             echo "EMAIL_TYPE=PERSONAL" >> $GITHUB_ENV
-          
           else
-            echo "No sensitive email addresses found."
             echo "EMAIL_TYPE=NONE" >> $GITHUB_ENV
           fi
 
