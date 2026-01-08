@@ -14,28 +14,46 @@ jobs:
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          if echo "$ISSUE_BODY" | grep -E "[a-zA-Z0-9._%+-]+@berkeley.edu"; then
+          # Check for Berkeley emails (FERPA)
+          if echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@berkeley\.edu"; then
             echo "::warning::Berkeley email address detected in issue!"
-            echo "EMAIL_DETECTED=true" >> $GITHUB_ENV
+            echo "EMAIL_TYPE=FERPA" >> $GITHUB_ENV
+          
+          # Check for common personal emails
+          elif echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|icloud|me|live|aol|protonmail)\.com"; then
+            echo "::warning::Personal email address detected in issue!"
+            echo "EMAIL_TYPE=PERSONAL" >> $GITHUB_ENV
+          
           else
-            echo "No Berkeley email addresses found."
-            echo "EMAIL_DETECTED=false" >> $GITHUB_ENV
+            echo "No sensitive email addresses found."
+            echo "EMAIL_TYPE=NONE" >> $GITHUB_ENV
           fi
 
       - name: Add warning comment if email detected
-        if: env.EMAIL_DETECTED == 'true'
+        if: env.EMAIL_TYPE != 'NONE'
         uses: actions/github-script@v7
+        env:
+          EMAIL_TYPE: ${{ env.EMAIL_TYPE }}
         with:
           script: |
+            const emailType = process.env.EMAIL_TYPE;
+            let warningBody = '';
+
+            if (emailType === 'FERPA') {
+              warningBody = '⚠️ **FERPA Violation Warning**: This issue appears to contain a Berkeley email address. Please remove it immediately to ensure compliance with FERPA regulations and protect student privacy.';
+            } else if (emailType === 'PERSONAL') {
+              warningBody = '⚠️ **Privacy Warning**: This issue appears to contain a personal email address. For your safety, please avoid determining personal contact information in public repositories.';
+            }
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '⚠️ **FERPA Violation Warning**: This issue appears to contain a Berkeley email address. Please remove it immediately to ensure compliance with FERPA regulations and protect student privacy.'
+              body: warningBody
             })
 
       - name: Add label if email detected
-        if: env.EMAIL_DETECTED == 'true'
+        if: env.EMAIL_TYPE != 'NONE'
         uses: actions/github-script@v7
         with:
           script: |
