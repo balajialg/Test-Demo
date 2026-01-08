@@ -31,7 +31,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '⚠️ **Privacy Warning**: This issue appears to contain an email address. Please consider removing it to protect privacy.'
+              body: '⚠️ **FERPA Violation Warning**: This issue appears to contain a Berkeley email address. Please remove it immediately to ensure compliance with FERPA regulations and protect student privacy.'
             })
 
       - name: Add label if email detected
