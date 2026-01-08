@@ -7,6 +7,8 @@ on:
 jobs:
   check_for_emails:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Scan issue body for emails
         env:
