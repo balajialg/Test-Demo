@@ -3,6 +3,8 @@ name: Check for Emails in Issues
 on:
   issues:
     types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
 
 jobs:
   check_for_emails:
@@ -10,21 +12,22 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Scan issue body for emails
+      - name: Scan content for emails
         env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          # Check comment body if triggered by comment, otherwise check issue body
+          CONTENT_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || github.event.issue.body }}
         run: |
           FERPA_FOUND=false
           PERSONAL_FOUND=false
 
           # Check for Berkeley emails (FERPA)
-          if echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@berkeley\.edu"; then
+          if echo "$CONTENT_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@berkeley\.edu"; then
             echo "::warning::Berkeley email address detected!"
             FERPA_FOUND=true
           fi
           
           # Check for common personal emails
-          if echo "$ISSUE_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|icloud|me|live|aol|protonmail)\.com"; then
+          if echo "$CONTENT_BODY" | grep -iE "[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|icloud|me|live|aol|protonmail)\.com"; then
             echo "::warning::Personal email address detected!"
             PERSONAL_FOUND=true
           fi
@@ -38,7 +41,7 @@ jobs:
             echo "EMAIL_TYPE=NONE" >> $GITHUB_ENV
           fi
 
-      - name: Add warning comment if email detected
+      - name: Handle email detection (Warn or Delete)
         if: env.EMAIL_TYPE != 'NONE'
         uses: actions/github-script@v7
         env:
@@ -46,20 +49,43 @@ jobs:
         with:
           script: |
             const emailType = process.env.EMAIL_TYPE;
+            const eventName = context.eventName;
+            
+            // Define warning messages
             let warningBody = '';
-
             if (emailType === 'FERPA') {
-              warningBody = '⚠️ **FERPA Violation Warning**: This issue appears to contain a Berkeley email address. Please remove it immediately to ensure compliance with FERPA regulations and protect student privacy.';
+              warningBody = '⚠️ **FERPA Violation Warning**: Content containing a Berkeley email address was detected. ';
+              warningBody += eventName === 'issue_comment' ? 'The comment has been deleted.' : 'Please remove it immediately.';
             } else if (emailType === 'PERSONAL') {
-              warningBody = '⚠️ **Privacy Warning**: This issue appears to contain a personal email address. For your safety, please avoid determining personal contact information in public repositories.';
+              warningBody = '⚠️ **Privacy Warning**: Content containing a personal email address was detected. ';
+              warningBody += eventName === 'issue_comment' ? 'The comment has been deleted.' : 'Please avoid posting personal contact information.';
             }
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: warningBody
-            })
+            // If it's a comment, delete it
+            if (eventName === 'issue_comment') {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id
+              });
+              
+              // Optionally post a warning that the comment was deleted
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: warningBody
+              });
+              
+            } else {
+              // If it's the issue body, just warn (don't delete the whole issue)
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: warningBody
+              });
+            }
 
       - name: Add label if email detected
         if: env.EMAIL_TYPE != 'NONE'
